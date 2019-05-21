@@ -1,6 +1,6 @@
 TEMPLATE = app
 
-QT += core
+QT += core testlib
 QT -= gui
 
 CONFIG += c++17 warning_clean exceptions console

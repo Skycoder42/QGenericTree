@@ -18,6 +18,9 @@ private:
 	using Container = TContainer<TKey, NodePtr>;
 
 public:
+	class WeakNode;
+
+	// TODO fix constness
 	class Node
 	{
 	public:
@@ -31,6 +34,8 @@ public:
 
 		explicit operator bool() const;
 		bool operator!() const;
+		bool operator==(const Node &other) const;
+		bool operator!=(const Node &other) const;
 
 		// value access functions
 		bool hasValue() const;
@@ -78,14 +83,34 @@ public:
 		// other
 		void detach();
 		Node clone() const;
+		WeakNode toWeakNode() const;
+		void drop();
 
 	private:
 		friend class QGenericTreeBase;
+		friend class WeakNode;
 		NodePtr d;
 
-		inline Node(NodePtr data) :
-			d{std::move(data)}
-		{}
+		inline Node(NodePtr data);
+	};
+
+	class WeakNode
+	{
+	public:
+		WeakNode() = default;
+		WeakNode(const Node &node);
+		WeakNode(const WeakNode &other) = default;
+		WeakNode &operator=(const WeakNode &other) = default;
+		WeakNode(WeakNode &&other) noexcept = default;
+		WeakNode &operator=(WeakNode &&other) noexcept = default;
+		~WeakNode() = default;
+
+		explicit operator bool() const;
+		bool operator!() const;
+		Node toNode() const;
+
+	private:
+		WeakNodePtr d;
 	};
 
 	using iterator_category_const = std::bidirectional_iterator_tag;
@@ -183,6 +208,8 @@ private:
 
 		NodePtr find(const QList<TKey> &keys, int index, const NodePtr &current) const;
 		NodePtr clone() const;
+		int depth() const;
+		QList<TKey> key() const;
 	};
 
 	Node _root;
@@ -203,6 +230,18 @@ QGenericTreeBase<TKey, TValue, TContainer>::Node::operator bool() const {
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
 bool QGenericTreeBase<TKey, TValue, TContainer>::Node::operator!() const {
 	return !d;
+}
+
+template <typename TKey, typename TValue, template<class, class> typename TContainer>
+bool QGenericTreeBase<TKey, TValue, TContainer>::Node::operator==(const Node &other) const
+{
+	return d == other.d;
+}
+
+template <typename TKey, typename TValue, template<class, class> typename TContainer>
+bool QGenericTreeBase<TKey, TValue, TContainer>::Node::operator!=(const Node &other) const
+{
+	return d != other.d;
 }
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
@@ -250,7 +289,10 @@ const TValue &QGenericTreeBase<TKey, TValue, TContainer>::Node::operator*() cons
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
 TValue &QGenericTreeBase<TKey, TValue, TContainer>::Node::operator*() & {
-	return *(d->value);
+	if (!d->value.has_value())
+		return d->value.emplace();
+	else
+		return *(d->value);
 }
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
@@ -260,7 +302,10 @@ const TValue &&QGenericTreeBase<TKey, TValue, TContainer>::Node::operator*() con
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
 TValue &&QGenericTreeBase<TKey, TValue, TContainer>::Node::operator*() && {
-	return *(std::move(d->value));
+	if (!d->value.has_value())
+		return d->value.emplace();
+	else
+		return *(d->value);
 }
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
@@ -333,7 +378,8 @@ typename QGenericTreeBase<TKey, TValue, TContainer>::Node QGenericTreeBase<TKey,
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
 typename QGenericTreeBase<TKey, TValue, TContainer>::Node QGenericTreeBase<TKey, TValue, TContainer>::Node::takeChild(const TKey &key) {
 	Node child{d->children.take(key)};
-	child.d->parent = nullptr;
+	if (child.d)
+		child.d->parent = nullptr;
 	return child;
 }
 
@@ -362,26 +408,12 @@ typename QGenericTreeBase<TKey, TValue, TContainer>::Node QGenericTreeBase<TKey,
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
 int QGenericTreeBase<TKey, TValue, TContainer>::Node::depth() const {
-	const auto parent = d->parent.toStrongRef();
-	return parent ? parent->depth() + 1 : 0;
+	return d->depth();
 }
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
 QList<TKey> QGenericTreeBase<TKey, TValue, TContainer>::Node::key() const {
-	const auto parent = d->parent.toStrongRef();
-	if (!parent)
-		return {};
-
-	// search myself within my parent to get my key
-	for (auto it = parent->children.begin(), end = parent->children.end(); it != end; ++it) {
-		if (*it == d) {
-			auto keyChain = parent->key();
-			keyChain.append(it.key());
-			return keyChain;
-		}
-	}
-
-	return {};
+	return d->key();
 }
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
@@ -440,6 +472,48 @@ typename QGenericTreeBase<TKey, TValue, TContainer>::Node QGenericTreeBase<TKey,
 	Node clone{d->clone()};
 	clone.d->parent = nullptr;
 	return clone;
+}
+
+template <typename TKey, typename TValue, template<class, class> typename TContainer>
+typename QGenericTreeBase<TKey, TValue, TContainer>::WeakNode QGenericTreeBase<TKey, TValue, TContainer>::Node::toWeakNode() const
+{
+	return WeakNode{*this};
+}
+
+template <typename TKey, typename TValue, template<class, class> typename TContainer>
+void QGenericTreeBase<TKey, TValue, TContainer>::Node::drop()
+{
+	d.clear();
+}
+
+template <typename TKey, typename TValue, template<class, class> typename TContainer>
+QGenericTreeBase<TKey, TValue, TContainer>::Node::Node(QGenericTreeBase::NodePtr data) :
+	d{std::move(data)}
+{}
+
+
+
+template <typename TKey, typename TValue, template<class, class> typename TContainer>
+QGenericTreeBase<TKey, TValue, TContainer>::WeakNode::WeakNode(const Node &node) :
+	d{node.d}
+{}
+
+template <typename TKey, typename TValue, template<class, class> typename TContainer>
+QGenericTreeBase<TKey, TValue, TContainer>::WeakNode::operator bool() const
+{
+	return d;
+}
+
+template <typename TKey, typename TValue, template<class, class> typename TContainer>
+bool QGenericTreeBase<TKey, TValue, TContainer>::WeakNode::operator!() const
+{
+	return !d;
+}
+
+template <typename TKey, typename TValue, template<class, class> typename TContainer>
+typename QGenericTreeBase<TKey, TValue, TContainer>::Node QGenericTreeBase<TKey, TValue, TContainer>::WeakNode::toNode() const
+{
+	return Node{d.toStrongRef()};
 }
 
 
@@ -712,6 +786,32 @@ typename QGenericTreeBase<TKey, TValue, TContainer>::NodePtr QGenericTreeBase<TK
 		it->parent = cloned.toWeakRef();
 	}
 	return cloned;
+}
+
+template <typename TKey, typename TValue, template<class, class> typename TContainer>
+int QGenericTreeBase<TKey, TValue, TContainer>::NodeData::depth() const
+{
+	const auto strParent = parent.toStrongRef();
+	return strParent ? strParent->depth() + 1 : 0;
+}
+
+template <typename TKey, typename TValue, template<class, class> typename TContainer>
+QList<TKey> QGenericTreeBase<TKey, TValue, TContainer>::NodeData::key() const
+{
+	const auto strParent = parent.toStrongRef();
+	if (!strParent)
+		return {};
+
+	// search myself within my parent to get my key
+	for (auto it = strParent->children.begin(), end = strParent->children.end(); it != end; ++it) {
+		if (*it == this) {
+			auto keyChain = strParent->key();
+			keyChain.append(it.key());
+			return keyChain;
+		}
+	}
+
+	return {};
 }
 
 #endif // QGENERICTREEBASE_H

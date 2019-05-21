@@ -1,5 +1,7 @@
 HEADERS += \
-	$$PWD/qgenerictreebase.h
+	$$PWD/qgenerictreebase.h \
+	$$PWD/qorderedtree.h \
+	$$PWD/qunorderedtree.h
 
 INCLUDEPATH += $$PWD
 
