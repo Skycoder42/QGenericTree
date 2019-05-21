@@ -782,8 +782,8 @@ template <typename TKey, typename TValue, template<class, class> typename TConta
 typename QGenericTreeBase<TKey, TValue, TContainer>::NodePtr QGenericTreeBase<TKey, TValue, TContainer>::NodeData::clone() const {
 	auto cloned = NodePtr::create(*this);
 	for (auto it = cloned->children.begin(), end = cloned->children.end(); it != end; ++it) {
-		*it = it->clone();
-		it->parent = cloned.toWeakRef();
+		*it = (*it)->clone();
+		(*it)->parent = cloned.toWeakRef();
 	}
 	return cloned;
 }
