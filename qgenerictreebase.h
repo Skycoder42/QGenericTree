@@ -18,10 +18,66 @@ private:
 	using Container = TContainer<TKey, NodePtr>;
 
 public:
+	class ConstWeakNode;
 	class WeakNode;
 
-	// TODO fix constness
-	class Node
+	class ConstNode
+	{
+	public:
+		ConstNode(const ConstNode &other) = default;
+		ConstNode &operator=(const ConstNode &other) = default;
+		ConstNode(ConstNode &&other) noexcept = default;
+		ConstNode &operator=(ConstNode &&other) noexcept = default;
+		~ConstNode() = default;
+		friend inline void swap(ConstNode &lhs, ConstNode &rhs) noexcept { lhs.d.swap(rhs.d); } // must be implemented inline because of the friend declaration
+
+		explicit operator bool() const;
+		bool operator!() const;
+		bool operator==(const ConstNode &other) const;
+		bool operator!=(const ConstNode &other) const;
+
+		// value access functions
+		bool hasValue() const;
+		template <typename TDefault>
+		TValue value(TDefault &&defaultValue = TValue{}) const;
+		// value access operators
+		const TValue &operator*() const;
+		const TValue *operator->() const;
+
+		// child access
+		bool containsChild(const TKey &key) const;
+		int childCount() const;
+		bool hasChildren() const;
+		QList<ConstNode> children() const;
+		ConstNode child(const TKey &key) const;
+		// child access operators
+		ConstNode operator[](const TKey &key) const;
+
+		// tree access
+		int depth() const;
+		QList<TKey> key() const;
+		TKey subKey() const;
+		ConstNode parent() const;
+		ConstNode findChild(const QList<TKey> &keys) const;
+
+		// other
+		void detach();
+		ConstNode clone() const;
+		ConstWeakNode toWeakNode() const;
+		void drop();
+
+	protected:
+		NodePtr d;
+
+		inline ConstNode(NodePtr data);
+
+	private:
+		friend class QGenericTreeBase;
+		friend class ConstWeakNode;
+		ConstNode() = default;
+	};
+
+	class Node : public ConstNode
 	{
 	public:
 		Node();
@@ -33,67 +89,75 @@ public:
 		~Node() = default;
 		friend inline void swap(Node &lhs, Node &rhs) noexcept { lhs.d.swap(rhs.d); } // must be implemented inline because of the friend declaration
 
-		explicit operator bool() const;
-		bool operator!() const;
+		using ConstNode::operator bool;
+		using ConstNode::operator!;
 		bool operator==(const Node &other) const;
 		bool operator!=(const Node &other) const;
 
 		// value access functions
-		bool hasValue() const;
-		template <typename TDefault>
-		TValue value(TDefault &&defaultValue = TValue{}) const;
 		void setValue(TValue value);
 		TValue takeValue();
 		void clearValue();
 		// value access operators
 		template <typename TAssign>
 		Node &operator=(TAssign &&value);
-		const TValue &operator*() const;
+		using ConstNode::operator*;
 		TValue &operator*();
-		const TValue *operator->() const;
+		using ConstNode::operator->;
 		TValue *operator->();
 
 		// child access
-		bool containsChild(const TKey &key) const;
-		int childCount() const;
-		bool hasChildren() const;
+		using ConstNode::children;
 		QList<Node> children();
-		QList<const Node> children() const;
+		using ConstNode::child;
 		Node child(const TKey &key);
-		const Node child(const TKey &key) const;
 		void insertChild(const TKey &key, Node child);
 		Node emplaceChild(const TKey &key);
 		Node takeChild(const TKey &key);
 		bool removeChild(const TKey &key);
 		void clearChildren();
 		// child access operators
-		const Node operator[](const TKey &key) const;
+		using ConstNode::operator[];
 		Node operator[](const TKey &key);
 
 		// tree access
-		int depth() const;
-		QList<TKey> key() const;
-		TKey subKey() const;
+		using ConstNode::parent;
 		Node parent();
-		const Node parent() const;
+		using ConstNode::findChild;
 		Node findChild(const QList<TKey> &keys);
-		const Node findChild(const QList<TKey> &keys) const;
 
 		// other
-		void detach();
 		Node clone() const;
 		WeakNode toWeakNode() const;
-		void drop();
 
 	private:
 		friend class QGenericTreeBase;
 		friend class WeakNode;
-		NodePtr d;
 
 		inline Node(NodePtr data);
 	};
 
-	class WeakNode
+	class ConstWeakNode
+	{
+	public:
+		ConstWeakNode() = default;
+		ConstWeakNode(const ConstNode &node);
+		ConstWeakNode(const ConstWeakNode &other) = default;
+		ConstWeakNode &operator=(const ConstWeakNode &other) = default;
+		ConstWeakNode(ConstWeakNode &&other) noexcept = default;
+		ConstWeakNode &operator=(ConstWeakNode &&other) noexcept = default;
+		~ConstWeakNode() = default;
+		friend inline void swap(ConstWeakNode &lhs, ConstWeakNode &rhs) noexcept { lhs.d.swap(rhs.d); } // must be implemented inline because of the friend declaration
+
+		explicit operator bool() const;
+		bool operator!() const;
+		ConstNode toNode() const;
+
+	protected:
+		WeakNodePtr d;
+	};
+
+	class WeakNode : public ConstWeakNode
 	{
 	public:
 		WeakNode() = default;
@@ -105,12 +169,9 @@ public:
 		~WeakNode() = default;
 		friend inline void swap(WeakNode &lhs, WeakNode &rhs) noexcept { lhs.d.swap(rhs.d); } // must be implemented inline because of the friend declaration
 
-		explicit operator bool() const;
-		bool operator!() const;
+		using ConstWeakNode::operator bool;
+		using ConstWeakNode::operator!;
 		Node toNode() const;
-
-	private:
-		WeakNodePtr d;
 	};
 
 	using iterator_category_const = std::bidirectional_iterator_tag;
@@ -155,9 +216,9 @@ public:
 		QList<TKey> key() const;
 		TKey subKey() const;
 		template<typename SFINAE = value_type>
-		std::enable_if_t<!std::is_const_v<SFINAE>, Node> node() const;
+		std::enable_if_t<std::is_const_v<SFINAE>, ConstNode> node() const;
 		template<typename SFINAE = value_type>
-		std::enable_if_t<std::is_const_v<SFINAE>, const Node> node() const;
+		std::enable_if_t<!std::is_const_v<SFINAE>, Node> node() const;
 
 	protected:
 		NodePtr _node;
@@ -177,15 +238,17 @@ public:
 
 	static QGenericTreeBase makeTree(Node node);
 
+	ConstNode rootNode() const;
 	Node rootNode();
-	const Node rootNode() const;
 
 	bool contains(const TKey &key) const;
 	bool contains(const QList<TKey> &key) const;
 	int countElements(bool valueOnly = false) const;
-	const Node operator[](const TKey &key) const;
+	ConstNode find(const QList<TKey> &keys) const;
+	Node find(const QList<TKey> &keys);
+	ConstNode operator[](const TKey &key) const;
 	Node operator[](const TKey &key);
-	const Node operator[](const QList<TKey> &key) const;
+	ConstNode operator[](const QList<TKey> &key) const;
 	Node operator[](const QList<TKey> &key);
 
 	iterator begin();
@@ -220,111 +283,66 @@ private:
 // GENERIC IMPLEMENTATION
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
-QGenericTreeBase<TKey, TValue, TContainer>::Node::Node() :
-	d{NodePtr::create()}
-{}
-
-template <typename TKey, typename TValue, template<class, class> typename TContainer>
-QGenericTreeBase<TKey, TValue, TContainer>::Node::operator bool() const {
+QGenericTreeBase<TKey, TValue, TContainer>::ConstNode::operator bool() const {
 	return d;
 }
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
-bool QGenericTreeBase<TKey, TValue, TContainer>::Node::operator!() const {
+bool QGenericTreeBase<TKey, TValue, TContainer>::ConstNode::operator!() const {
 	return !d;
 }
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
-bool QGenericTreeBase<TKey, TValue, TContainer>::Node::operator==(const Node &other) const
+bool QGenericTreeBase<TKey, TValue, TContainer>::ConstNode::operator==(const ConstNode &other) const
 {
 	return d == other.d;
 }
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
-bool QGenericTreeBase<TKey, TValue, TContainer>::Node::operator!=(const Node &other) const
+bool QGenericTreeBase<TKey, TValue, TContainer>::ConstNode::operator!=(const ConstNode &other) const
 {
 	return d != other.d;
 }
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
-bool QGenericTreeBase<TKey, TValue, TContainer>::Node::hasValue() const {
+bool QGenericTreeBase<TKey, TValue, TContainer>::ConstNode::hasValue() const {
 	return d->value.has_value();
 }
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
 template <typename TDefault>
-TValue QGenericTreeBase<TKey, TValue, TContainer>::Node::value(TDefault &&defaultValue) const {
+TValue QGenericTreeBase<TKey, TValue, TContainer>::ConstNode::value(TDefault &&defaultValue) const {
 	return d->value.value_or(std::forward<TDefault>(defaultValue));
 }
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
-void QGenericTreeBase<TKey, TValue, TContainer>::Node::setValue(TValue value) {
-	d->value = std::move(value);
-}
-
-template <typename TKey, typename TValue, template<class, class> typename TContainer>
-TValue QGenericTreeBase<TKey, TValue, TContainer>::Node::takeValue() {
-	if (d->value) {
-		auto tValue = *std::move(d->value);
-		d->value = std::nullopt;
-		return tValue;
-	} else
-		return {};
-}
-
-template <typename TKey, typename TValue, template<class, class> typename TContainer>
-void QGenericTreeBase<TKey, TValue, TContainer>::Node::clearValue() {
-	d->value = std::nullopt;
-}
-
-template <typename TKey, typename TValue, template<class, class> typename TContainer>
-template <typename TAssign>
-typename QGenericTreeBase<TKey, TValue, TContainer>::Node &QGenericTreeBase<TKey, TValue, TContainer>::Node::operator=(TAssign &&value) {
-	d->value = std::forward<TAssign>(value);
-	return *this;
-}
-
-template <typename TKey, typename TValue, template<class, class> typename TContainer>
-const TValue &QGenericTreeBase<TKey, TValue, TContainer>::Node::operator*() const {
+const TValue &QGenericTreeBase<TKey, TValue, TContainer>::ConstNode::operator*() const {
 	return *(d->value);
 }
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
-TValue &QGenericTreeBase<TKey, TValue, TContainer>::Node::operator*() {
-	if (!d->value.has_value())
-		return d->value.emplace();
-	else
-		return *(d->value);
-}
-
-template <typename TKey, typename TValue, template<class, class> typename TContainer>
-const TValue *QGenericTreeBase<TKey, TValue, TContainer>::Node::operator->() const {
+const TValue *QGenericTreeBase<TKey, TValue, TContainer>::ConstNode::operator->() const {
 	return d->value.operator->();
 }
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
-TValue *QGenericTreeBase<TKey, TValue, TContainer>::Node::operator->() {
-	return d->value.operator->();
-}
-
-template <typename TKey, typename TValue, template<class, class> typename TContainer>
-bool QGenericTreeBase<TKey, TValue, TContainer>::Node::containsChild(const TKey &key) const {
+bool QGenericTreeBase<TKey, TValue, TContainer>::ConstNode::containsChild(const TKey &key) const {
 	return d->children.contains(key);
 }
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
-int QGenericTreeBase<TKey, TValue, TContainer>::Node::childCount() const {
+int QGenericTreeBase<TKey, TValue, TContainer>::ConstNode::childCount() const {
 	return d->children.size();
 }
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
-bool QGenericTreeBase<TKey, TValue, TContainer>::Node::hasChildren() const {
+bool QGenericTreeBase<TKey, TValue, TContainer>::ConstNode::hasChildren() const {
 	return !d->children.empty();
 }
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
-QList<typename QGenericTreeBase<TKey, TValue, TContainer>::Node> QGenericTreeBase<TKey, TValue, TContainer>::Node::children() {
-	QList<Node> childList;
+QList<typename QGenericTreeBase<TKey, TValue, TContainer>::ConstNode> QGenericTreeBase<TKey, TValue, TContainer>::ConstNode::children() const {
+	QList<ConstNode> childList;
 	childList.reserve(d->children.size());
 	for (const auto &child : d->children)
 		childList.append(child);
@@ -332,81 +350,27 @@ QList<typename QGenericTreeBase<TKey, TValue, TContainer>::Node> QGenericTreeBas
 }
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
-QList<const typename QGenericTreeBase<TKey, TValue, TContainer>::Node> QGenericTreeBase<TKey, TValue, TContainer>::Node::children() const {
-	QList<const Node> childList;
-	childList.reserve(d->children.size());
-	for (const auto &child : d->children)
-		childList.append(child);
-	return childList;
-}
-
-template <typename TKey, typename TValue, template<class, class> typename TContainer>
-typename QGenericTreeBase<TKey, TValue, TContainer>::Node QGenericTreeBase<TKey, TValue, TContainer>::Node::child(const TKey &key) {
+typename QGenericTreeBase<TKey, TValue, TContainer>::ConstNode QGenericTreeBase<TKey, TValue, TContainer>::ConstNode::child(const TKey &key) const {
 	return d->children.value(key, NodePtr{});
 }
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
-const typename QGenericTreeBase<TKey, TValue, TContainer>::Node QGenericTreeBase<TKey, TValue, TContainer>::Node::child(const TKey &key) const {
-	return d->children.value(key, NodePtr{});
-}
-
-template <typename TKey, typename TValue, template<class, class> typename TContainer>
-void QGenericTreeBase<TKey, TValue, TContainer>::Node::insertChild(const TKey &key, Node child) {
-	child.d->parent = d.toWeakRef();
-	d->children.insert(key, child.d);
-}
-
-template <typename TKey, typename TValue, template<class, class> typename TContainer>
-typename QGenericTreeBase<TKey, TValue, TContainer>::Node QGenericTreeBase<TKey, TValue, TContainer>::Node::emplaceChild(const TKey &key) {
-	Node child;
-	child.d->parent = d.toWeakRef();
-	d->children.insert(key, child.d);
-	return child;
-}
-
-template <typename TKey, typename TValue, template<class, class> typename TContainer>
-typename QGenericTreeBase<TKey, TValue, TContainer>::Node QGenericTreeBase<TKey, TValue, TContainer>::Node::takeChild(const TKey &key) {
-	Node child{d->children.take(key)};
-	if (child.d)
-		child.d->parent = nullptr;
-	return child;
-}
-
-template <typename TKey, typename TValue, template<class, class> typename TContainer>
-bool QGenericTreeBase<TKey, TValue, TContainer>::Node::removeChild(const TKey &key) {
-	return d->children.remove(key) > 0;
-}
-
-template <typename TKey, typename TValue, template<class, class> typename TContainer>
-void QGenericTreeBase<TKey, TValue, TContainer>::Node::clearChildren() {
-	d->children.clear();
-}
-
-template <typename TKey, typename TValue, template<class, class> typename TContainer>
-const typename QGenericTreeBase<TKey, TValue, TContainer>::Node QGenericTreeBase<TKey, TValue, TContainer>::Node::operator[](const TKey &key) const {
+typename QGenericTreeBase<TKey, TValue, TContainer>::ConstNode QGenericTreeBase<TKey, TValue, TContainer>::ConstNode::operator[](const TKey &key) const {
 	return child(key);
 }
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
-typename QGenericTreeBase<TKey, TValue, TContainer>::Node QGenericTreeBase<TKey, TValue, TContainer>::Node::operator[](const TKey &key) {
-	auto dIter = d->children.find(key);
-	if (dIter == d->children.end())
-		dIter = d->children.insert(key, NodePtr::create(d.toWeakRef()));
-	return *dIter;
-}
-
-template <typename TKey, typename TValue, template<class, class> typename TContainer>
-int QGenericTreeBase<TKey, TValue, TContainer>::Node::depth() const {
+int QGenericTreeBase<TKey, TValue, TContainer>::ConstNode::depth() const {
 	return d->depth();
 }
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
-QList<TKey> QGenericTreeBase<TKey, TValue, TContainer>::Node::key() const {
+QList<TKey> QGenericTreeBase<TKey, TValue, TContainer>::ConstNode::key() const {
 	return d->key();
 }
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
-TKey QGenericTreeBase<TKey, TValue, TContainer>::Node::subKey() const
+TKey QGenericTreeBase<TKey, TValue, TContainer>::ConstNode::subKey() const
 {
 	const auto parent = d->parent.toStrongRef();
 	if (!parent)
@@ -422,27 +386,17 @@ TKey QGenericTreeBase<TKey, TValue, TContainer>::Node::subKey() const
 }
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
-typename QGenericTreeBase<TKey, TValue, TContainer>::Node QGenericTreeBase<TKey, TValue, TContainer>::Node::parent() {
+typename QGenericTreeBase<TKey, TValue, TContainer>::ConstNode QGenericTreeBase<TKey, TValue, TContainer>::ConstNode::parent() const {
 	return d->parent.toStrongRef();
 }
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
-const typename QGenericTreeBase<TKey, TValue, TContainer>::Node QGenericTreeBase<TKey, TValue, TContainer>::Node::parent() const {
-	return d->parent.toStrongRef();
-}
-
-template <typename TKey, typename TValue, template<class, class> typename TContainer>
-typename QGenericTreeBase<TKey, TValue, TContainer>::Node QGenericTreeBase<TKey, TValue, TContainer>::Node::findChild(const QList<TKey> &keys) {
+typename QGenericTreeBase<TKey, TValue, TContainer>::ConstNode QGenericTreeBase<TKey, TValue, TContainer>::ConstNode::findChild(const QList<TKey> &keys) const {
 	return d->find(keys, 0, d);
 }
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
-const typename QGenericTreeBase<TKey, TValue, TContainer>::Node QGenericTreeBase<TKey, TValue, TContainer>::Node::findChild(const QList<TKey> &keys) const {
-	return d->find(keys, 0, d);
-}
-
-template <typename TKey, typename TValue, template<class, class> typename TContainer>
-void QGenericTreeBase<TKey, TValue, TContainer>::Node::detach()
+void QGenericTreeBase<TKey, TValue, TContainer>::ConstNode::detach()
 {
 	const auto parent = d->parent.toStrongRef();
 	if (!parent)
@@ -458,8 +412,156 @@ void QGenericTreeBase<TKey, TValue, TContainer>::Node::detach()
 }
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
-typename QGenericTreeBase<TKey, TValue, TContainer>::Node QGenericTreeBase<TKey, TValue, TContainer>::Node::clone() const {
+typename QGenericTreeBase<TKey, TValue, TContainer>::ConstNode QGenericTreeBase<TKey, TValue, TContainer>::ConstNode::clone() const {
 	Node clone{d->clone()};
+	clone.d->parent = nullptr;
+	return clone;
+}
+
+template <typename TKey, typename TValue, template<class, class> typename TContainer>
+typename QGenericTreeBase<TKey, TValue, TContainer>::ConstWeakNode QGenericTreeBase<TKey, TValue, TContainer>::ConstNode::toWeakNode() const
+{
+	return ConstWeakNode{*this};
+}
+
+template <typename TKey, typename TValue, template<class, class> typename TContainer>
+void QGenericTreeBase<TKey, TValue, TContainer>::ConstNode::drop()
+{
+	d.clear();
+}
+
+template <typename TKey, typename TValue, template<class, class> typename TContainer>
+QGenericTreeBase<TKey, TValue, TContainer>::ConstNode::ConstNode(QGenericTreeBase::NodePtr data) :
+	d{std::move(data)}
+{}
+
+
+
+
+template <typename TKey, typename TValue, template<class, class> typename TContainer>
+QGenericTreeBase<TKey, TValue, TContainer>::Node::Node() :
+	ConstNode{NodePtr::create()}
+{}
+
+template <typename TKey, typename TValue, template<class, class> typename TContainer>
+bool QGenericTreeBase<TKey, TValue, TContainer>::Node::operator==(const Node &other) const
+{
+	return this->d == other.d;
+}
+
+template <typename TKey, typename TValue, template<class, class> typename TContainer>
+bool QGenericTreeBase<TKey, TValue, TContainer>::Node::operator!=(const Node &other) const
+{
+	return this->d != other.d;
+}
+
+template <typename TKey, typename TValue, template<class, class> typename TContainer>
+void QGenericTreeBase<TKey, TValue, TContainer>::Node::setValue(TValue value) {
+	this->d->value = std::move(value);
+}
+
+template <typename TKey, typename TValue, template<class, class> typename TContainer>
+TValue QGenericTreeBase<TKey, TValue, TContainer>::Node::takeValue() {
+	if (this->d->value) {
+		auto tValue = *std::move(this->d->value);
+		this->d->value = std::nullopt;
+		return tValue;
+	} else
+		return {};
+}
+
+template <typename TKey, typename TValue, template<class, class> typename TContainer>
+void QGenericTreeBase<TKey, TValue, TContainer>::Node::clearValue() {
+	this->d->value = std::nullopt;
+}
+
+template <typename TKey, typename TValue, template<class, class> typename TContainer>
+template <typename TAssign>
+typename QGenericTreeBase<TKey, TValue, TContainer>::Node &QGenericTreeBase<TKey, TValue, TContainer>::Node::operator=(TAssign &&value) {
+	this->d->value = std::forward<TAssign>(value);
+	return *this;
+}
+
+template <typename TKey, typename TValue, template<class, class> typename TContainer>
+TValue &QGenericTreeBase<TKey, TValue, TContainer>::Node::operator*() {
+	if (!this->d->value.has_value())
+		return this->d->value.emplace();
+	else
+		return *(this->d->value);
+}
+
+template <typename TKey, typename TValue, template<class, class> typename TContainer>
+TValue *QGenericTreeBase<TKey, TValue, TContainer>::Node::operator->() {
+	return this->d->value.operator->();
+}
+
+template <typename TKey, typename TValue, template<class, class> typename TContainer>
+QList<typename QGenericTreeBase<TKey, TValue, TContainer>::Node> QGenericTreeBase<TKey, TValue, TContainer>::Node::children() {
+	QList<Node> childList;
+	childList.reserve(this->d->children.size());
+	for (const auto &child : this->d->children)
+		childList.append(child);
+	return childList;
+}
+
+template <typename TKey, typename TValue, template<class, class> typename TContainer>
+typename QGenericTreeBase<TKey, TValue, TContainer>::Node QGenericTreeBase<TKey, TValue, TContainer>::Node::child(const TKey &key) {
+	return this->d->children.value(key, NodePtr{});
+}
+
+template <typename TKey, typename TValue, template<class, class> typename TContainer>
+void QGenericTreeBase<TKey, TValue, TContainer>::Node::insertChild(const TKey &key, Node child) {
+	child.d->parent = this->d.toWeakRef();
+	this->d->children.insert(key, child.d);
+}
+
+template <typename TKey, typename TValue, template<class, class> typename TContainer>
+typename QGenericTreeBase<TKey, TValue, TContainer>::Node QGenericTreeBase<TKey, TValue, TContainer>::Node::emplaceChild(const TKey &key) {
+	Node child;
+	child.d->parent = this->d.toWeakRef();
+	this->d->children.insert(key, child.d);
+	return child;
+}
+
+template <typename TKey, typename TValue, template<class, class> typename TContainer>
+typename QGenericTreeBase<TKey, TValue, TContainer>::Node QGenericTreeBase<TKey, TValue, TContainer>::Node::takeChild(const TKey &key) {
+	Node child{this->d->children.take(key)};
+	if (child.d)
+		child.d->parent = nullptr;
+	return child;
+}
+
+template <typename TKey, typename TValue, template<class, class> typename TContainer>
+bool QGenericTreeBase<TKey, TValue, TContainer>::Node::removeChild(const TKey &key) {
+	return this->d->children.remove(key) > 0;
+}
+
+template <typename TKey, typename TValue, template<class, class> typename TContainer>
+void QGenericTreeBase<TKey, TValue, TContainer>::Node::clearChildren() {
+	this->d->children.clear();
+}
+
+template <typename TKey, typename TValue, template<class, class> typename TContainer>
+typename QGenericTreeBase<TKey, TValue, TContainer>::Node QGenericTreeBase<TKey, TValue, TContainer>::Node::operator[](const TKey &key) {
+	auto dIter = this->d->children.find(key);
+	if (dIter == this->d->children.end())
+		dIter = this->d->children.insert(key, NodePtr::create(this->d.toWeakRef()));
+	return *dIter;
+}
+
+template <typename TKey, typename TValue, template<class, class> typename TContainer>
+typename QGenericTreeBase<TKey, TValue, TContainer>::Node QGenericTreeBase<TKey, TValue, TContainer>::Node::parent() {
+	return this->d->parent.toStrongRef();
+}
+
+template <typename TKey, typename TValue, template<class, class> typename TContainer>
+typename QGenericTreeBase<TKey, TValue, TContainer>::Node QGenericTreeBase<TKey, TValue, TContainer>::Node::findChild(const QList<TKey> &keys) {
+	return this->d->find(keys, 0, this->d);
+}
+
+template <typename TKey, typename TValue, template<class, class> typename TContainer>
+typename QGenericTreeBase<TKey, TValue, TContainer>::Node QGenericTreeBase<TKey, TValue, TContainer>::Node::clone() const {
+	Node clone{this->d->clone()};
 	clone.d->parent = nullptr;
 	return clone;
 }
@@ -471,39 +573,46 @@ typename QGenericTreeBase<TKey, TValue, TContainer>::WeakNode QGenericTreeBase<T
 }
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
-void QGenericTreeBase<TKey, TValue, TContainer>::Node::drop()
+QGenericTreeBase<TKey, TValue, TContainer>::Node::Node(QGenericTreeBase::NodePtr data) :
+	ConstNode{std::move(data)}
+{}
+
+
+
+template <typename TKey, typename TValue, template<class, class> typename TContainer>
+QGenericTreeBase<TKey, TValue, TContainer>::ConstWeakNode::ConstWeakNode(const ConstNode &node) :
+	d{node.d}
+{}
+
+template <typename TKey, typename TValue, template<class, class> typename TContainer>
+QGenericTreeBase<TKey, TValue, TContainer>::ConstWeakNode::operator bool() const
 {
-	d.clear();
+	return this->d;
 }
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
-QGenericTreeBase<TKey, TValue, TContainer>::Node::Node(QGenericTreeBase::NodePtr data) :
-	d{std::move(data)}
-{}
+bool QGenericTreeBase<TKey, TValue, TContainer>::ConstWeakNode::operator!() const
+{
+	return !this->d;
+}
+
+template <typename TKey, typename TValue, template<class, class> typename TContainer>
+typename QGenericTreeBase<TKey, TValue, TContainer>::ConstNode QGenericTreeBase<TKey, TValue, TContainer>::ConstWeakNode::toNode() const
+{
+	return Node{this->d.toStrongRef()};
+}
 
 
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
 QGenericTreeBase<TKey, TValue, TContainer>::WeakNode::WeakNode(const Node &node) :
-	d{node.d}
+	ConstWeakNode{node}
 {}
-
-template <typename TKey, typename TValue, template<class, class> typename TContainer>
-QGenericTreeBase<TKey, TValue, TContainer>::WeakNode::operator bool() const
-{
-	return d;
-}
-
-template <typename TKey, typename TValue, template<class, class> typename TContainer>
-bool QGenericTreeBase<TKey, TValue, TContainer>::WeakNode::operator!() const
-{
-	return !d;
-}
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
 typename QGenericTreeBase<TKey, TValue, TContainer>::Node QGenericTreeBase<TKey, TValue, TContainer>::WeakNode::toNode() const
 {
-	return Node{d.toStrongRef()};
+	return Node{this->d.toStrongRef()};
 }
 
 
@@ -658,15 +767,15 @@ TKey QGenericTreeBase<TKey, TValue, TContainer>::iterator_base<TIterValue>::subK
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
 template <typename TIterValue>
 template<typename SFINAE>
-std::enable_if_t<!std::is_const_v<SFINAE>, typename QGenericTreeBase<TKey, TValue, TContainer>::Node> QGenericTreeBase<TKey, TValue, TContainer>::iterator_base<TIterValue>::node() const
+std::enable_if_t<std::is_const_v<SFINAE>, typename QGenericTreeBase<TKey, TValue, TContainer>::ConstNode> QGenericTreeBase<TKey, TValue, TContainer>::iterator_base<TIterValue>::node() const
 {
-	return Node{this->_node};
+	return ConstNode{this->_node};
 }
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
 template <typename TIterValue>
 template<typename SFINAE>
-std::enable_if_t<std::is_const_v<SFINAE>, const typename QGenericTreeBase<TKey, TValue, TContainer>::Node> QGenericTreeBase<TKey, TValue, TContainer>::iterator_base<TIterValue>::node() const
+std::enable_if_t<!std::is_const_v<SFINAE>, typename QGenericTreeBase<TKey, TValue, TContainer>::Node> QGenericTreeBase<TKey, TValue, TContainer>::iterator_base<TIterValue>::node() const
 {
 	return Node{this->_node};
 }
@@ -689,27 +798,27 @@ QGenericTreeBase<TKey, TValue, TContainer> QGenericTreeBase<TKey, TValue, TConta
 }
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
+typename QGenericTreeBase<TKey, TValue, TContainer>::ConstNode QGenericTreeBase<TKey, TValue, TContainer>::rootNode() const
+{
+	return _root;
+}
+
+template <typename TKey, typename TValue, template<class, class> typename TContainer>
 typename QGenericTreeBase<TKey, TValue, TContainer>::Node QGenericTreeBase<TKey, TValue, TContainer>::rootNode()
 {
 	return _root;
 }
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
-const typename QGenericTreeBase<TKey, TValue, TContainer>::Node QGenericTreeBase<TKey, TValue, TContainer>::rootNode() const
+bool QGenericTreeBase<TKey, TValue, TContainer>::contains(const QList<TKey> &key) const
 {
-	return _root;
+	return static_cast<bool>(_root.findChild(key));
 }
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
 bool QGenericTreeBase<TKey, TValue, TContainer>::contains(const TKey &key) const
 {
 	return _root.containsChild(key);
-}
-
-template <typename TKey, typename TValue, template<class, class> typename TContainer>
-bool QGenericTreeBase<TKey, TValue, TContainer>::contains(const QList<TKey> &key) const
-{
-	return static_cast<bool>(_root.findChild(key));
 }
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
@@ -724,7 +833,19 @@ int QGenericTreeBase<TKey, TValue, TContainer>::countElements(bool valueOnly) co
 }
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
-const typename QGenericTreeBase<TKey, TValue, TContainer>::Node QGenericTreeBase<TKey, TValue, TContainer>::operator[](const TKey &key) const
+typename QGenericTreeBase<TKey, TValue, TContainer>::ConstNode QGenericTreeBase<TKey, TValue, TContainer>::find(const QList<TKey> &keys) const
+{
+	return _root.findChild(keys);
+}
+
+template <typename TKey, typename TValue, template<class, class> typename TContainer>
+typename QGenericTreeBase<TKey, TValue, TContainer>::Node QGenericTreeBase<TKey, TValue, TContainer>::find(const QList<TKey> &keys)
+{
+	return _root.findChild(keys);
+}
+
+template <typename TKey, typename TValue, template<class, class> typename TContainer>
+typename QGenericTreeBase<TKey, TValue, TContainer>::ConstNode QGenericTreeBase<TKey, TValue, TContainer>::operator[](const TKey &key) const
 {
 	return _root[key];
 }
@@ -736,15 +857,18 @@ typename QGenericTreeBase<TKey, TValue, TContainer>::Node QGenericTreeBase<TKey,
 }
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
-const typename QGenericTreeBase<TKey, TValue, TContainer>::Node QGenericTreeBase<TKey, TValue, TContainer>::operator[](const QList<TKey> &key) const
+typename QGenericTreeBase<TKey, TValue, TContainer>::ConstNode QGenericTreeBase<TKey, TValue, TContainer>::operator[](const QList<TKey> &key) const
 {
-	return _root.findChild(key);
+	return _root->findChild(key);
 }
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
 typename QGenericTreeBase<TKey, TValue, TContainer>::Node QGenericTreeBase<TKey, TValue, TContainer>::operator[](const QList<TKey> &key)
 {
-	return _root.findChild(key);
+	auto cNode = _root;
+	for (const auto &subKey : key)
+		cNode = cNode[subKey];
+	return cNode;
 }
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>

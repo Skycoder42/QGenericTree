@@ -270,6 +270,16 @@ void QGenericTreeTest::testTreeBasics()
 	QCOMPARE(*tree[L3(0, 2, 4)], 4);
 	QCOMPARE(*tree[L3(0, 2, 5)], 5);
 
+	QCOMPARE(static_cast<bool>(tree.find({0})), true);
+	QCOMPARE(static_cast<bool>(tree.find({1})), true);
+	QCOMPARE(static_cast<bool>(tree.find({2})), false);
+	QCOMPARE(static_cast<bool>(tree.find(L2(0, 2))), true);
+	QCOMPARE(static_cast<bool>(tree.find(L2(0, 3))), true);
+	QCOMPARE(static_cast<bool>(tree.find(L2(0, 4))), false);
+	QCOMPARE(static_cast<bool>(tree.find(L3(0, 2, 4))), true);
+	QCOMPARE(static_cast<bool>(tree.find(L3(0, 2, 5))), true);
+	QCOMPARE(static_cast<bool>(tree.find(L3(0, 2, 6))), false);
+
 	QCOMPARE(tree.rootNode()[0], tree[0]);
 	QCOMPARE(tree.rootNode()[1], tree[1]);
 
