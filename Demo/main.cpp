@@ -300,21 +300,25 @@ void QGenericTreeTest::testTreeBasics()
 
 void QGenericTreeTest::testIterators()
 {
-	// build a basic tree of form:
-	//   /-9 /-8 /-7
-	// 0---2---4---6
-	//   \-1 \-3 \-5
 	QOrderedTree<int, int> tree;
-	tree.rootNode() = 0;
+
+	// test empty iteration
+	QCOMPARE(qAsConst(tree).begin(), qAsConst(tree).end());
+	QCOMPARE(tree.begin(), tree.end());
+
+	// build a basic tree of form:
+	//   /-8 /-7 /-6
+	// r---1---3---5
+	//   \-0 \-2 \-4
+	tree[0] = 0;
 	tree[1] = 1;
-	tree[2] = 2;
-	tree[2][3] = 3;
-	tree[2][4] = 4;
-	tree[2][4][5] = 5;
-	tree[2][4][6] = 6;
-	tree[2][4][7] = 7;
-	tree[2][8] = 8;
-	tree[9] = 9;
+	tree[1][2] = 2;
+	tree[1][3] = 3;
+	tree[1][3][4] = 4;
+	tree[1][3][5] = 5;
+	tree[1][3][6] = 6;
+	tree[1][7] = 7;
+	tree[8] = 8;
 
 	// test basic iteration
 	auto cnt = 0;
@@ -338,10 +342,44 @@ void QGenericTreeTest::testIterators()
 		QCOMPARE(value, cnt++);
 
 	// test reverse iteration
-	cnt = 9;
+	cnt = 8;
+	const auto wBeg = tree.begin();
+	auto wIt = tree.end();
+	while(wIt != wBeg) {
+		--wIt;
+		QCOMPARE(*wIt, cnt--);
+	}
+	cnt = 8;
 	for (auto it = std::make_reverse_iterator(tree.end()), end = std::make_reverse_iterator(tree.begin()); it != end; ++it)
 		QCOMPARE(*it, cnt--);
 
+	// test full it
+	cnt = 0;
+	const QHash<int, QList<int>> keyMap {
+		{0, {0}},
+		{1, {1}},
+		{2, {1, 2}},
+		{3, {1, 3}},
+		{4, {1, 3, 4}},
+		{5, {1, 3, 5}},
+		{6, {1, 3, 6}},
+		{7, {1, 7}},
+		{8, {8}}
+	};
+	// remove value from 5
+	tree[1][3][5].clearValue();
+	for (auto it = tree.begin(), end = tree.end(); it != end; ++it) {
+		QCOMPARE(static_cast<bool>(it), cnt != 5);
+		QCOMPARE(!it, cnt == 5);
+		QCOMPARE(it.subKey(), cnt);
+		QCOMPARE(it.key(), keyMap[cnt]);
+		QVERIFY(static_cast<bool>(it.node()));
+		if (cnt != 5) {
+			QCOMPARE(*it, cnt);
+			QCOMPARE(*it.node(), cnt);
+		}
+		++cnt;
+	}
 }
 
 QTEST_MAIN(QGenericTreeTest)
