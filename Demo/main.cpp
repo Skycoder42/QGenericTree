@@ -3,6 +3,9 @@
 #include "qunorderedtree.h"
 #include "qorderedtree.h"
 
+#define L2(a, b) {a, b}
+#define L3(a, b, c) {a, b, c}
+
 class QGenericTreeTest : public QObject
 {
 	Q_OBJECT
@@ -11,11 +14,17 @@ private Q_SLOTS:
 	void testNodeValues();
 	void testNodeChildren();
 	void testNodeCildTrees();
+	void testTreeBasics();
+	void testIterators();
+
+private:
+	using TestTree = QUnorderedTree<int, int>;
+	//using TestTree = QOrderedTree<int, int>;
 };
 
 void QGenericTreeTest::testNodeValues()
 {
-	QUnorderedTree<QString, int>::Node testNode;
+	TestTree::Node testNode;
 
 	// without value
 	QCOMPARE(static_cast<bool>(testNode), true);
@@ -62,7 +71,7 @@ void QGenericTreeTest::testNodeValues()
 
 void QGenericTreeTest::testNodeChildren()
 {
-	QUnorderedTree<int, int>::Node testNode;
+	TestTree::Node testNode;
 
 	// init state
 	QCOMPARE(static_cast<bool>(testNode), true);
@@ -90,7 +99,7 @@ void QGenericTreeTest::testNodeChildren()
 	QCOMPARE(childNode.subKey(), 42);
 	QCOMPARE(childNode.key(), QList<int>{42});
 	// tree state
-	QList<QUnorderedTree<int, int>::Node> childList {childNode};
+	QList<TestTree::Node> childList {childNode};
 	QCOMPARE(testNode.hasChildren(), true);
 	QCOMPARE(testNode.containsChild(42), true);
 	QCOMPARE(testNode.children(), childList);
@@ -152,6 +161,24 @@ void QGenericTreeTest::testNodeChildren()
 	QCOMPARE(testNode[7].key(), QList<int>{7});
 	testNode.clearChildren();
 	QCOMPARE(testNode.hasChildren(), false);
+
+	TestTree::Node swapNode;
+	testNode = 1;
+	swapNode = 2;
+	auto weakTest = testNode.toWeakNode();
+	auto weakSwap = swapNode.toWeakNode();
+	QCOMPARE(*testNode, 1);
+	QCOMPARE(*swapNode, 2);
+	swap(testNode, swapNode);
+	QCOMPARE(*testNode, 2);
+	QCOMPARE(*swapNode, 1);
+	QCOMPARE(*weakTest.toNode(), 1);
+	QCOMPARE(*weakSwap.toNode(), 2);
+	swap(weakTest, weakSwap);
+	QCOMPARE(*weakTest.toNode(), 2);
+	QCOMPARE(*weakSwap.toNode(), 1);
+	QCOMPARE(*testNode, 2);
+	QCOMPARE(*swapNode, 1);
 }
 
 void QGenericTreeTest::testNodeCildTrees()
@@ -159,7 +186,7 @@ void QGenericTreeTest::testNodeCildTrees()
 	// build a basic tree of form:
 	// 0---1---3---5
 	//   \-2 \-4 \-6
-	QOrderedTree<int, int>::Node node0;
+	TestTree::Node node0;
 	QVERIFY(node0);
 	auto node1 = node0[1];
 	QVERIFY(node1);
@@ -221,6 +248,100 @@ void QGenericTreeTest::testNodeCildTrees()
 	node5.drop();
 	QCOMPARE(node3.containsChild(5), true);
 	node5 = node3[5];
+}
+
+void QGenericTreeTest::testTreeBasics()
+{
+	// build a basic tree of form:
+	// r---0---2---4
+	//   \-1 \-3 \-5
+	TestTree tree;
+	tree[0] = 0;
+	tree[1] = 1;
+	tree[0][2] = 2;
+	tree[0][3] = 3;
+	tree[0][2][4] = 4;
+	tree[0][2][5] = 5;
+
+	QCOMPARE(*tree[0], 0);
+	QCOMPARE(*tree[1], 1);
+	QCOMPARE(*tree[L2(0, 2)], 2);
+	QCOMPARE(*tree[L2(0, 3)], 3);
+	QCOMPARE(*tree[L3(0, 2, 4)], 4);
+	QCOMPARE(*tree[L3(0, 2, 5)], 5);
+
+	QCOMPARE(tree.rootNode()[0], tree[0]);
+	QCOMPARE(tree.rootNode()[1], tree[1]);
+
+	QCOMPARE(tree.contains(0), true);
+	QCOMPARE(tree.contains(1), true);
+	QCOMPARE(tree.contains(L2(0, 2)), true);
+	QCOMPARE(tree.contains(L2(0, 3)), true);
+	QCOMPARE(tree.contains(L3(0, 2, 4)), true);
+	QCOMPARE(tree.contains(L3(0, 2, 5)), true);
+	QCOMPARE(tree.contains(3), false);
+	QCOMPARE(tree.contains(L2(0, 4)), false);
+	QCOMPARE(tree.contains(L3(0, 2, 6)), false);
+
+	auto cloned = tree.clone();
+	QVERIFY(cloned.rootNode() != tree.rootNode());
+	QCOMPARE(cloned.contains(0), true);
+	QVERIFY(cloned[0] != tree[0]);
+	cloned[L2(0, 2)] = 42;
+	QCOMPARE(*tree[L2(0, 2)], 2);
+	QCOMPARE(*cloned[L2(0, 2)], 42);
+	swap(tree, cloned);
+	QCOMPARE(*tree[L2(0, 2)], 42);
+	QCOMPARE(*cloned[L2(0, 2)], 2);
+	cloned.clear();
+	QCOMPARE(cloned.contains(0), false);
+	QCOMPARE(cloned.rootNode().hasChildren(), false);
+}
+
+void QGenericTreeTest::testIterators()
+{
+	// build a basic tree of form:
+	//   /-9 /-8 /-7
+	// 0---2---4---6
+	//   \-1 \-3 \-5
+	QOrderedTree<int, int> tree;
+	tree.rootNode() = 0;
+	tree[1] = 1;
+	tree[2] = 2;
+	tree[2][3] = 3;
+	tree[2][4] = 4;
+	tree[2][4][5] = 5;
+	tree[2][4][6] = 6;
+	tree[2][4][7] = 7;
+	tree[2][8] = 8;
+	tree[9] = 9;
+
+	// test basic iteration
+	auto cnt = 0;
+	for (auto it = qAsConst(tree).begin(), end = qAsConst(tree).end(); it != end; ++it)
+		QCOMPARE(*it, cnt++);
+	cnt = 0;
+	for (const auto &value : qAsConst(tree))
+		QCOMPARE(value, cnt++);
+	cnt = 0;
+	for (auto it = tree.begin(), end = tree.end(); it != end; ++it) {
+		QCOMPARE(*it, cnt++);
+		*it = cnt;
+	}
+	cnt = 1;
+	for (auto &value : tree) {
+		QCOMPARE(value, cnt++);
+		value = cnt - 2;
+	}
+	cnt = 0;
+	for (const auto &value : qAsConst(tree))
+		QCOMPARE(value, cnt++);
+
+	// test reverse iteration
+	cnt = 9;
+//	for (auto it = std::make_reverse_iterator(tree.end()), end = std::make_reverse_iterator(tree.begin()); it != end; ++it)
+//		QCOMPARE(*it, cnt--);
+
 }
 
 QTEST_MAIN(QGenericTreeTest)

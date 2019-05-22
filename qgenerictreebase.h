@@ -31,6 +31,7 @@ public:
 		Node(Node &&other) noexcept = default;
 		Node &operator=(Node &&other) noexcept = default;
 		~Node() = default;
+		friend inline void swap(Node &lhs, Node &rhs) noexcept { lhs.d.swap(rhs.d); } // must be implemented inline because of the friend declaration
 
 		explicit operator bool() const;
 		bool operator!() const;
@@ -47,10 +48,8 @@ public:
 		// value access operators
 		template <typename TAssign>
 		Node &operator=(TAssign &&value);
-		const TValue &operator*() const &;
-		TValue &operator*() &;
-		const TValue &&operator*() const &&;
-		TValue &&operator*() &&;
+		const TValue &operator*() const;
+		TValue &operator*();
 		const TValue *operator->() const;
 		TValue *operator->();
 
@@ -104,6 +103,7 @@ public:
 		WeakNode(WeakNode &&other) noexcept = default;
 		WeakNode &operator=(WeakNode &&other) noexcept = default;
 		~WeakNode() = default;
+		friend inline void swap(WeakNode &lhs, WeakNode &rhs) noexcept { lhs.d.swap(rhs.d); } // must be implemented inline because of the friend declaration
 
 		explicit operator bool() const;
 		bool operator!() const;
@@ -155,10 +155,10 @@ public:
 		bool operator!() const;
 		QList<TKey> key() const;
 		TKey subKey() const;
-		template<typename = std::enable_if_t<!is_const, void*>>
-		Node node() const;
-		template<typename = std::enable_if_t<is_const, void*>>
-		const Node node() const;
+		template<typename SFINAE = value_type>
+		std::enable_if_t<!std::is_const_v<SFINAE>, Node> node() const;
+		template<typename SFINAE = value_type>
+		std::enable_if_t<std::is_const_v<SFINAE>, const Node> node() const;
 
 	protected:
 		NodePtr _node;
@@ -181,8 +181,11 @@ public:
 	Node rootNode();
 	const Node rootNode() const;
 
+	bool contains(const TKey &key) const;
 	bool contains(const QList<TKey> &key) const;
 	int countElements(bool valueOnly = false) const;
+	const Node operator[](const TKey &key) const;
+	Node operator[](const TKey &key);
 	const Node operator[](const QList<TKey> &key) const;
 	Node operator[](const QList<TKey> &key);
 
@@ -283,25 +286,12 @@ typename QGenericTreeBase<TKey, TValue, TContainer>::Node &QGenericTreeBase<TKey
 }
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
-const TValue &QGenericTreeBase<TKey, TValue, TContainer>::Node::operator*() const & {
+const TValue &QGenericTreeBase<TKey, TValue, TContainer>::Node::operator*() const {
 	return *(d->value);
 }
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
-TValue &QGenericTreeBase<TKey, TValue, TContainer>::Node::operator*() & {
-	if (!d->value.has_value())
-		return d->value.emplace();
-	else
-		return *(d->value);
-}
-
-template <typename TKey, typename TValue, template<class, class> typename TContainer>
-const TValue &&QGenericTreeBase<TKey, TValue, TContainer>::Node::operator*() const && {
-	return *(std::move(d->value));
-}
-
-template <typename TKey, typename TValue, template<class, class> typename TContainer>
-TValue &&QGenericTreeBase<TKey, TValue, TContainer>::Node::operator*() && {
+TValue &QGenericTreeBase<TKey, TValue, TContainer>::Node::operator*() {
 	if (!d->value.has_value())
 		return d->value.emplace();
 	else
@@ -463,6 +453,7 @@ void QGenericTreeBase<TKey, TValue, TContainer>::Node::detach()
 		if (*it == d) {
 			parent->children.erase(it);
 			d->parent = nullptr;
+			break;
 		}
 	}
 }
@@ -656,19 +647,25 @@ TKey QGenericTreeBase<TKey, TValue, TContainer>::iterator_base<TIterValue>::subK
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
 template <typename TIterValue>
-template<typename>
-typename QGenericTreeBase<TKey, TValue, TContainer>::Node QGenericTreeBase<TKey, TValue, TContainer>::iterator_base<TIterValue>::node() const
+template<typename SFINAE>
+std::enable_if_t<!std::is_const_v<SFINAE>, typename QGenericTreeBase<TKey, TValue, TContainer>::Node> QGenericTreeBase<TKey, TValue, TContainer>::iterator_base<TIterValue>::node() const
 {
 	return Node{this->_node};
 }
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
 template <typename TIterValue>
-template<typename>
-const typename QGenericTreeBase<TKey, TValue, TContainer>::Node QGenericTreeBase<TKey, TValue, TContainer>::iterator_base<TIterValue>::node() const
+template<typename SFINAE>
+std::enable_if_t<std::is_const_v<SFINAE>, const typename QGenericTreeBase<TKey, TValue, TContainer>::Node> QGenericTreeBase<TKey, TValue, TContainer>::iterator_base<TIterValue>::node() const
 {
 	return Node{this->_node};
 }
+
+template <typename TKey, typename TValue, template<class, class> typename TContainer>
+template<typename TIterValue>
+QGenericTreeBase<TKey, TValue, TContainer>::iterator_base<TIterValue>::iterator_base(NodePtr data) :
+	_node{data}
+{}
 
 
 
@@ -694,6 +691,12 @@ const typename QGenericTreeBase<TKey, TValue, TContainer>::Node QGenericTreeBase
 }
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
+bool QGenericTreeBase<TKey, TValue, TContainer>::contains(const TKey &key) const
+{
+	return _root.containsChild(key);
+}
+
+template <typename TKey, typename TValue, template<class, class> typename TContainer>
 bool QGenericTreeBase<TKey, TValue, TContainer>::contains(const QList<TKey> &key) const
 {
 	return static_cast<bool>(_root.findChild(key));
@@ -708,6 +711,18 @@ int QGenericTreeBase<TKey, TValue, TContainer>::countElements(bool valueOnly) co
 			++cnt;
 	}
 	return cnt;
+}
+
+template <typename TKey, typename TValue, template<class, class> typename TContainer>
+const typename QGenericTreeBase<TKey, TValue, TContainer>::Node QGenericTreeBase<TKey, TValue, TContainer>::operator[](const TKey &key) const
+{
+	return _root[key];
+}
+
+template <typename TKey, typename TValue, template<class, class> typename TContainer>
+typename QGenericTreeBase<TKey, TValue, TContainer>::Node QGenericTreeBase<TKey, TValue, TContainer>::operator[](const TKey &key)
+{
+	return _root[key];
 }
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
