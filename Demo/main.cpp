@@ -339,8 +339,8 @@ void QGenericTreeTest::testIterators()
 
 	// test reverse iteration
 	cnt = 9;
-//	for (auto it = std::make_reverse_iterator(tree.end()), end = std::make_reverse_iterator(tree.begin()); it != end; ++it)
-//		QCOMPARE(*it, cnt--);
+	for (auto it = std::make_reverse_iterator(tree.end()), end = std::make_reverse_iterator(tree.begin()); it != end; ++it)
+		QCOMPARE(*it, cnt--);
 
 }
 

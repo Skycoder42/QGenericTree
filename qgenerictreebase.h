@@ -121,12 +121,11 @@ public:
 	{
 		friend class QGenericTreeBase;
 	public:
-		static constexpr auto is_const = std::is_const_v<TIterValue>;
-		using iterator_category = std::conditional_t<is_const, iterator_category_const, iterator_category_non_const>;
 		using value_type = TIterValue;
 		using difference_type = int;
 		using pointer = value_type*;
 		using reference = value_type&;
+		using iterator_category = std::conditional_t<std::is_const_v<value_type>, iterator_category_const, iterator_category_non_const>;
 
 		// LegacyIterator requirements
 		iterator_base(const iterator_base &other) = default;
@@ -162,8 +161,9 @@ public:
 
 	protected:
 		NodePtr _node;
+		bool _atEnd;
 
-		iterator_base(NodePtr data);
+		iterator_base(NodePtr data, bool atEnd);
 	};
 
 	using iterator = iterator_base<TValue>;
@@ -513,14 +513,16 @@ template <typename TKey, typename TValue, template<class, class> typename TConta
 template <typename TIterValue>
 bool QGenericTreeBase<TKey, TValue, TContainer>::iterator_base<TIterValue>::operator==(const iterator_base &other) const
 {
-	return _node == other._node;
+	return _node == other._node &&
+			_atEnd == other._atEnd;
 }
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
 template <typename TIterValue>
 bool QGenericTreeBase<TKey, TValue, TContainer>::iterator_base<TIterValue>::operator!=(const QGenericTreeBase<TKey, TValue, TContainer>::iterator_base<TIterValue> &other) const
 {
-	return _node != other._node;
+	return _node != other._node ||
+			_atEnd != other._atEnd;
 }
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
@@ -541,34 +543,39 @@ template <typename TKey, typename TValue, template<class, class> typename TConta
 template <typename TIterValue>
 typename QGenericTreeBase<TKey, TValue, TContainer>::template iterator_base<TIterValue> &QGenericTreeBase<TKey, TValue, TContainer>::iterator_base<TIterValue>::operator++()
 {
-	// first step: check for children -> if yes, advance to first child
+	// first step: check if at end -> cant advance over end
+	if (_atEnd)
+		return *this;
+
+	// second step: check for children -> if yes, advance to first child
 	if (!_node->children.empty()) {
 		_node = _node->children.first();
 		return *this;
 	}
 
-	// second step: go back to parent and check for siblings, in a loop
-	auto currentNode = _node;
+	// third step: go back to parent and check for siblings, in a loop
 	forever {
-		const auto parent = currentNode->parent.toStrongRef();
-		if (!parent) { // no parent & no children -> go to end
-			_node.reset();
+		const auto parent = _node->parent.toStrongRef();
+		if (!parent) { // no parent & no more children -> go to end
+			_atEnd = true;
 			return *this;
 		}
 
 		// search myself within my parent
 		for (auto it = parent->children.begin(), end = parent->children.end(); it != end; ++it) {
-			if (*it == currentNode) {
+			if (*it == _node) {
 				// if next element in child list still exists -> this one is next
 				if (++it != end) {
 					_node = *it;
 					return *this;
 				} else { // I am last element -> proceed one layer up
-					currentNode = parent;
+					_node = parent;
 					break;
 				}
 			}
 		}
+
+		Q_ASSERT(_node == parent);
 	}
 }
 
@@ -585,12 +592,21 @@ template <typename TKey, typename TValue, template<class, class> typename TConta
 template <typename TIterValue>
 typename QGenericTreeBase<TKey, TValue, TContainer>::template iterator_base<TIterValue> &QGenericTreeBase<TKey, TValue, TContainer>::iterator_base<TIterValue>::operator--()
 {
-	// first step: check if first element in parent list -> inverse iterator search
+	// first step: handle special atEnd case
+	if (_atEnd) {
+		// walk that one down to the outermost and deepst right element possible
+		while (!_node->children.empty())
+			_node = _node->children.last();
+		_atEnd = false;
+		return *this;
+	}
+
+	// second step: get parent -> no parent means at beginning
 	const auto parent = _node->parent.toStrongRef();
-	if (!parent) // no parent -> can't go back -> do nothing
+	if (!parent) // no parent, not at end -> can't go back -> do nothing
 		return *this;
 
-	// search myself within my parent, backwards
+	// third step: find self in parent list
 	for (auto it = std::make_reverse_iterator(parent->children.end()), end = std::make_reverse_iterator(parent->children.begin()); it != end; ++it) {
 		if (*it == _node) {
 			if (--it != end) {
@@ -606,6 +622,8 @@ typename QGenericTreeBase<TKey, TValue, TContainer>::template iterator_base<TIte
 			}
 		}
 	}
+
+	Q_UNREACHABLE();
 }
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
@@ -663,8 +681,9 @@ std::enable_if_t<std::is_const_v<SFINAE>, const typename QGenericTreeBase<TKey, 
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
 template<typename TIterValue>
-QGenericTreeBase<TKey, TValue, TContainer>::iterator_base<TIterValue>::iterator_base(NodePtr data) :
-	_node{data}
+QGenericTreeBase<TKey, TValue, TContainer>::iterator_base<TIterValue>::iterator_base(NodePtr data, bool atEnd) :
+	_node{data},
+	_atEnd{atEnd}
 {}
 
 
@@ -740,25 +759,25 @@ typename QGenericTreeBase<TKey, TValue, TContainer>::Node QGenericTreeBase<TKey,
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
 typename QGenericTreeBase<TKey, TValue, TContainer>::iterator QGenericTreeBase<TKey, TValue, TContainer>::begin()
 {
-	return _root.d;
+	return {_root.d, false};
 }
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
 typename QGenericTreeBase<TKey, TValue, TContainer>::iterator QGenericTreeBase<TKey, TValue, TContainer>::end()
 {
-	return NodePtr{};
+	return {_root.d, true};
 }
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
 typename QGenericTreeBase<TKey, TValue, TContainer>::const_iterator QGenericTreeBase<TKey, TValue, TContainer>::begin() const
 {
-	return _root.d;
+	return {_root.d, false};
 }
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
 typename QGenericTreeBase<TKey, TValue, TContainer>::const_iterator QGenericTreeBase<TKey, TValue, TContainer>::end() const
 {
-	return NodePtr{};
+	return {_root.d, true};
 }
 
 template <typename TKey, typename TValue, template<class, class> typename TContainer>
